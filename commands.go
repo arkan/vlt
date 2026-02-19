@@ -29,7 +29,6 @@ type unresolvedResult struct {
 	Source string `json:"source"`
 }
 
-
 // cmdVaults lists all Obsidian vaults discovered from the config file.
 func cmdVaults(format string) error {
 	vaults, err := discoverVaults()

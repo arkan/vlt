@@ -53,8 +53,8 @@ func TestParseWikilinks(t *testing.T) {
 			},
 		},
 		{
-			name: "no links",
-			text: "Plain text with no links at all.",
+			name:  "no links",
+			text:  "Plain text with no links at all.",
 			wants: []wikilink{},
 		},
 		{

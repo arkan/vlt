@@ -33,7 +33,7 @@ vlt is not a replacement for Obsidian. It's a power tool for the command line th
 
 ## Installation
 
-### From source (requires Go 1.22+)
+### From source (requires Go 1.24+)
 
 ```bash
 git clone https://github.com/RamXX/vlt.git
