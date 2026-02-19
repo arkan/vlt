@@ -19,7 +19,7 @@ Obsidian is a remarkable knowledge management tool. Its local-first philosophy, 
 
 But Obsidian's official CLI requires the desktop app to be running. Every operation round-trips through Electron -- fine for interactive use, but a bottleneck when you need to script vault operations, run them in CI, integrate them into automated workflows, or use them from environments where a GUI simply isn't available.
 
-**vlt** is a complementary tool that operates directly on your vault's markdown files. It reads the same Obsidian configuration, resolves notes the same way (including aliases), understands wikilinks, embeds, frontmatter, and tags -- but does it all through direct filesystem access.
+**vlt** was built for a specific purpose: giving AI agents fast, scriptable access to Obsidian vaults as a persistent knowledge layer. It operates directly on your vault's markdown files -- reads Obsidian's configuration, resolves notes by filename and alias, and extracts wikilinks, embeds, frontmatter, and tags -- all through direct filesystem access. It does not replicate Obsidian's full Markdown rendering engine (see [Parsing scope](#important-parsing-scope) below).
 
 Use cases where vlt shines:
 
@@ -29,7 +29,22 @@ Use cases where vlt shines:
 - **Remote/headless servers** -- Access your vault on machines where Obsidian can't run
 - **Vault maintenance** -- Find orphan notes, broken links, and unresolved references across thousands of notes
 
-vlt is not a replacement for Obsidian. It's a power tool for the command line that speaks the same language your vault already uses.
+vlt is not a replacement for Obsidian or for the [Obsidian CLI](https://github.com/Obsidian-CLI/obsidian-cli). It was purpose-built for agentic memory workflows -- LLM agents that need to read, write, and query a knowledge base without GUI dependencies or Node.js runtimes. Other use cases (CI, scripting, headless servers) are welcome side effects, not the primary design target.
+
+## Important: parsing scope
+
+vlt does **not** replicate Obsidian's Markdown parser. Obsidian has a sophisticated rendering engine with many subtleties around how it interprets Markdown -- handling of HTML comments, Obsidian comments (`%%`), code blocks, callouts, embedded queries, and numerous edge cases in non-trivial documents. vlt does not attempt to reproduce any of that.
+
+What vlt *does* parse:
+
+- **Wikilinks and embeds** (`[[...]]`, `![[...]]`) -- extracted via regex, not a full AST
+- **YAML frontmatter** -- simple string-based parsing for common Obsidian patterns (key-value pairs, inline lists, block lists), not a full YAML spec implementation
+- **Inline tags** (`#tag`) -- basic pattern matching
+- **Checkboxes** (`- [ ]`, `- [x]`) -- line-by-line extraction
+
+Notably, vlt has no concept of fenced code blocks, so a wikilink inside a code block will still be detected as a link. An Obsidian comment (`%% hidden %%`) will be treated as regular text. Content inside HTML comments will be scanned like any other content.
+
+For straightforward vaults -- plain notes, frontmatter, wikilinks, tags -- this works reliably. If your vault makes heavy use of Obsidian's more advanced Markdown features, be aware that vlt may produce different results than Obsidian's own resolution.
 
 ## Installation
 
@@ -346,7 +361,7 @@ vlt vault="MyVault" tags counts sort="count" | head -10
 
 ## Comparison with Obsidian CLI
 
-vlt is a drop-in complement for the official [Obsidian CLI](https://github.com/Obsidian-CLI/obsidian-cli). The parameter syntax is intentionally compatible (`key="value"` style) to make migration straightforward.
+vlt was built independently for agentic memory use cases, not as a replacement for the official [Obsidian CLI](https://github.com/Obsidian-CLI/obsidian-cli). The parameter syntax is intentionally compatible (`key="value"` style) so that switching between the two is straightforward where their features overlap.
 
 | Capability | vlt | Obsidian CLI |
 |------------|-----|--------------|
