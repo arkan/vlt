@@ -3,17 +3,92 @@ package main
 import (
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
 
 // searchResult holds a single search match.
 type searchResult struct {
 	title   string
 	relPath string
+}
+
+// contextMatch holds a single line-level match with surrounding context.
+type contextMatch struct {
+	File    string   // relative path
+	Line    int      // 1-based line number of the match
+	Match   string   // the matched line text
+	Context []string // surrounding lines including the match line
+}
+
+// lineRange represents an inclusive range of 0-based line indices.
+type lineRange struct {
+	start int
+	end   int
+}
+
+// findMatchLines returns 0-based line indices where query appears (case-insensitive).
+func findMatchLines(lines []string, query string) []int {
+	queryLower := strings.ToLower(query)
+	var matches []int
+	for i, line := range lines {
+		if strings.Contains(strings.ToLower(line), queryLower) {
+			matches = append(matches, i)
+		}
+	}
+	return matches
+}
+
+// findMatchLinesRegex returns 0-based line indices where the compiled regex matches.
+func findMatchLinesRegex(lines []string, re *regexp.Regexp) []int {
+	var matches []int
+	for i, line := range lines {
+		if re.MatchString(line) {
+			matches = append(matches, i)
+		}
+	}
+	return matches
+}
+
+// expandAndMerge takes match line indices and a context radius, producing merged
+// non-overlapping ranges clamped to [0, totalLines).
+func expandAndMerge(matchLines []int, contextN int, totalLines int) []lineRange {
+	if len(matchLines) == 0 {
+		return nil
+	}
+
+	var ranges []lineRange
+	for _, m := range matchLines {
+		start := m - contextN
+		if start < 0 {
+			start = 0
+		}
+		end := m + contextN
+		if end >= totalLines {
+			end = totalLines - 1
+		}
+		ranges = append(ranges, lineRange{start, end})
+	}
+
+	// Merge overlapping or adjacent ranges
+	merged := []lineRange{ranges[0]}
+	for i := 1; i < len(ranges); i++ {
+		last := &merged[len(merged)-1]
+		if ranges[i].start <= last.end+1 {
+			if ranges[i].end > last.end {
+				last.end = ranges[i].end
+			}
+		} else {
+			merged = append(merged, ranges[i])
+		}
+	}
+
+	return merged
 }
 
 // linkInfo holds outgoing link information.
@@ -57,6 +132,7 @@ func cmdVaults(format string) error {
 }
 
 // cmdRead prints the contents of a note resolved by title.
+// If heading= is provided, only the specified section is returned.
 func cmdRead(vaultDir string, params map[string]string) error {
 	title := params["file"]
 	if title == "" {
@@ -73,7 +149,34 @@ func cmdRead(vaultDir string, params map[string]string) error {
 		return err
 	}
 
-	fmt.Print(string(data))
+	heading := params["heading"]
+	if heading == "" {
+		// No heading filter: return entire note (backward compatible)
+		fmt.Print(string(data))
+		return nil
+	}
+
+	// Heading-scoped read: find the section and return heading + content
+	lines := strings.Split(string(data), "\n")
+	bounds, found := findSection(lines, heading)
+	if !found {
+		return fmt.Errorf("heading %q not found in %q", heading, title)
+	}
+
+	// Extract from heading line through end of section.
+	// Join with newlines to reconstruct the text. The last element in the
+	// slice from Split is typically an empty string when the file ended with
+	// a newline, so joining and adding a single trailing newline produces
+	// the correct output without doubling.
+	section := lines[bounds.HeadingLine:bounds.ContentEnd]
+	output := strings.Join(section, "\n")
+
+	// Ensure exactly one trailing newline (matches file convention).
+	if !strings.HasSuffix(output, "\n") {
+		output += "\n"
+	}
+
+	fmt.Print(output)
 	return nil
 }
 
@@ -94,15 +197,59 @@ func parseSearchQuery(query string) (text string, filters map[string]string) {
 
 // cmdSearch finds notes whose title or content matches the query (case-insensitive).
 // Supports property filters: query="term [key:value] [key2:value2]"
+// Supports regex="pattern" for regexp-based search (case-insensitive by default).
+// When both query= and regex= are provided, regex takes precedence (with a warning).
+// When context="N" is provided, output switches to file:line:content format
+// showing N lines before and after each match (similar to grep -C).
 func cmdSearch(vaultDir string, params map[string]string, format string) error {
 	query := params["query"]
-	if query == "" {
-		return fmt.Errorf("search requires query=\"<term>\"")
+	regexParam := params["regex"]
+
+	if query == "" && regexParam == "" {
+		return fmt.Errorf("search requires query=\"<term>\" or regex=\"<pattern>\"")
 	}
 
-	textQuery, filters := parseSearchQuery(query)
+	// Compile regex if provided
+	var re *regexp.Regexp
+	useRegex := regexParam != ""
+
+	if useRegex {
+		var compileErr error
+		re, compileErr = regexp.Compile("(?i)" + regexParam)
+		if compileErr != nil {
+			return fmt.Errorf("invalid regex %q: %v", regexParam, compileErr)
+		}
+
+		// If both query and regex provided, warn and use regex for text matching
+		if query != "" {
+			fmt.Fprintf(os.Stderr, "vlt: both query= and regex= provided; regex takes precedence for text matching\n")
+		}
+	}
+
+	// Parse property filters from query (even when regex is primary text matcher)
+	var textQuery string
+	var filters map[string]string
+	if query != "" {
+		textQuery, filters = parseSearchQuery(query)
+	} else {
+		filters = make(map[string]string)
+	}
+
+	// When regex is used, the regex is the text matcher (not the textQuery)
 	queryLower := strings.ToLower(textQuery)
+
 	pathFilter := params["path"] // optional: limit to a subdirectory
+
+	// Parse optional context parameter
+	contextStr := params["context"]
+	contextN := -1 // -1 means no context requested
+	if contextStr != "" {
+		n, err := parseInt0(contextStr)
+		if err != nil {
+			return fmt.Errorf("invalid context value: %s", contextStr)
+		}
+		contextN = n
+	}
 
 	searchRoot := vaultDir
 	if pathFilter != "" {
@@ -112,14 +259,15 @@ func cmdSearch(vaultDir string, params map[string]string, format string) error {
 		}
 	}
 
-	hasTextQuery := queryLower != ""
+	hasTextQuery := useRegex || queryLower != ""
 	hasFilters := len(filters) > 0
 
 	if !hasTextQuery && !hasFilters {
-		return fmt.Errorf("search requires query=\"<term>\"")
+		return fmt.Errorf("search requires query=\"<term>\" or regex=\"<pattern>\"")
 	}
 
 	var results []searchResult
+	var contextResults []contextMatch
 
 	err := filepath.WalkDir(searchRoot, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -165,15 +313,80 @@ func cmdSearch(vaultDir string, params map[string]string, format string) error {
 			return nil
 		}
 
-		// Check title first (cheap)
-		if strings.Contains(strings.ToLower(title), queryLower) {
+		// Determine matches based on regex or substring
+		var titleMatches, contentMatches bool
+		if useRegex {
+			titleMatches = re.MatchString(title)
+			contentMatches = re.MatchString(content)
+		} else {
+			titleMatches = strings.Contains(strings.ToLower(title), queryLower)
+			contentMatches = strings.Contains(strings.ToLower(content), queryLower)
+		}
+
+		if !titleMatches && !contentMatches {
+			return nil
+		}
+
+		// No context mode: use original behavior
+		if contextN < 0 {
 			results = append(results, searchResult{title, relPath})
 			return nil
 		}
 
-		// Check content
-		if strings.Contains(strings.ToLower(content), queryLower) {
-			results = append(results, searchResult{title, relPath})
+		// Context mode: find line-level matches in content
+		lines := strings.Split(content, "\n")
+		var matchLineIdxs []int
+		if useRegex {
+			matchLineIdxs = findMatchLinesRegex(lines, re)
+		} else {
+			matchLineIdxs = findMatchLines(lines, textQuery)
+		}
+
+		if len(matchLineIdxs) > 0 {
+			// Expand and merge ranges
+			ranges := expandAndMerge(matchLineIdxs, contextN, len(lines))
+			for _, r := range ranges {
+				// For each merged range, output each line
+				for i := r.start; i <= r.end; i++ {
+					isMatch := false
+					for _, m := range matchLineIdxs {
+						if m == i {
+							isMatch = true
+							break
+						}
+					}
+					if isMatch {
+						// Collect the full context window around this match
+						ctxStart := i - contextN
+						if ctxStart < 0 {
+							ctxStart = 0
+						}
+						ctxEnd := i + contextN
+						if ctxEnd >= len(lines) {
+							ctxEnd = len(lines) - 1
+						}
+						var ctxLines []string
+						for j := ctxStart; j <= ctxEnd; j++ {
+							ctxLines = append(ctxLines, lines[j])
+						}
+						contextResults = append(contextResults, contextMatch{
+							File:    relPath,
+							Line:    i + 1, // 1-based
+							Match:   lines[i],
+							Context: ctxLines,
+						})
+					}
+				}
+			}
+		} else if titleMatches {
+			// Title matched but no content match -- still show the file
+			// Use a synthetic context match with file info only
+			contextResults = append(contextResults, contextMatch{
+				File:    relPath,
+				Line:    0,
+				Match:   title,
+				Context: nil,
+			})
 		}
 
 		return nil
@@ -183,6 +396,16 @@ func cmdSearch(vaultDir string, params map[string]string, format string) error {
 		return err
 	}
 
+	// Context mode output
+	if contextN >= 0 {
+		if len(contextResults) == 0 {
+			return nil
+		}
+		formatSearchWithContext(contextResults, format)
+		return nil
+	}
+
+	// Non-context mode output
 	if len(results) == 0 {
 		return nil // silent on no results, matching grep convention
 	}
@@ -191,9 +414,26 @@ func cmdSearch(vaultDir string, params map[string]string, format string) error {
 	return nil
 }
 
+// parseInt0 parses a string as a non-negative integer (0 is allowed).
+func parseInt0(s string) (int, error) {
+	if s == "" {
+		return 0, fmt.Errorf("empty string")
+	}
+	n := 0
+	for _, ch := range s {
+		if ch < '0' || ch > '9' {
+			return 0, fmt.Errorf("not a number: %s", s)
+		}
+		n = n*10 + int(ch-'0')
+	}
+	return n, nil
+}
+
 // cmdCreate creates a new note at the given path within the vault.
 // Content comes from the content= parameter or stdin.
-func cmdCreate(vaultDir string, params map[string]string, silent bool) error {
+// When timestamps is true (or VLT_TIMESTAMPS=1), created_at and updated_at
+// are added to frontmatter.
+func cmdCreate(vaultDir string, params map[string]string, silent bool, timestamps bool) error {
 	name := params["name"]
 	notePath := params["path"]
 
@@ -216,6 +456,10 @@ func cmdCreate(vaultDir string, params map[string]string, silent bool) error {
 		content = readStdinIfPiped()
 	}
 
+	if timestampsEnabled(timestamps) {
+		content = ensureTimestamps(content, true, time.Now())
+	}
+
 	// Ensure parent directory exists
 	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
 		return err
@@ -233,7 +477,8 @@ func cmdCreate(vaultDir string, params map[string]string, silent bool) error {
 
 // cmdAppend adds content to the end of an existing note.
 // Content comes from the content= parameter or stdin.
-func cmdAppend(vaultDir string, params map[string]string) error {
+// When timestamps is true (or VLT_TIMESTAMPS=1), updated_at is refreshed.
+func cmdAppend(vaultDir string, params map[string]string, timestamps bool) error {
 	title := params["file"]
 	if title == "" {
 		return fmt.Errorf("append requires file=\"<title>\"")
@@ -258,8 +503,20 @@ func cmdAppend(vaultDir string, params map[string]string) error {
 	}
 	defer f.Close()
 
-	_, err = fmt.Fprint(f, content)
-	return err
+	if _, err = fmt.Fprint(f, content); err != nil {
+		return err
+	}
+
+	if timestampsEnabled(timestamps) {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		updated := ensureTimestamps(string(data), false, time.Now())
+		return os.WriteFile(path, []byte(updated), 0644)
+	}
+
+	return nil
 }
 
 // cmdMove moves a note from one path to another within the vault.
@@ -444,8 +701,53 @@ func cmdPropertySet(vaultDir string, params map[string]string) error {
 	return nil
 }
 
+// cmdWrite replaces the body content of an existing note, preserving frontmatter.
+// Content comes from the content= parameter or stdin.
+// If the note has no frontmatter, the entire file content is replaced.
+// When timestamps is true (or VLT_TIMESTAMPS=1), updated_at is refreshed.
+func cmdWrite(vaultDir string, params map[string]string, timestamps bool) error {
+	title := params["file"]
+	if title == "" {
+		return fmt.Errorf("write requires file=\"<title>\"")
+	}
+
+	path, err := resolveNote(vaultDir, title)
+	if err != nil {
+		return err
+	}
+
+	content := params["content"]
+	if content == "" {
+		content = readStdinIfPiped()
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	text := string(data)
+	_, bodyStart, hasFM := extractFrontmatter(text)
+
+	var result string
+	if hasFM {
+		lines := strings.Split(text, "\n")
+		frontmatter := strings.Join(lines[:bodyStart], "\n")
+		result = frontmatter + "\n" + content
+	} else {
+		result = content
+	}
+
+	if timestampsEnabled(timestamps) {
+		result = ensureTimestamps(result, false, time.Now())
+	}
+
+	return os.WriteFile(path, []byte(result), 0644)
+}
+
 // cmdPrepend inserts content at the top of a note, after frontmatter if present.
-func cmdPrepend(vaultDir string, params map[string]string) error {
+// When timestamps is true (or VLT_TIMESTAMPS=1), updated_at is refreshed.
+func cmdPrepend(vaultDir string, params map[string]string, timestamps bool) error {
 	title := params["file"]
 	if title == "" {
 		return fmt.Errorf("prepend requires file=\"<title>\"")
@@ -481,6 +783,10 @@ func cmdPrepend(vaultDir string, params map[string]string) error {
 		result = before + "\n" + content + after
 	} else {
 		result = content + text
+	}
+
+	if timestampsEnabled(timestamps) {
+		result = ensureTimestamps(result, false, time.Now())
 	}
 
 	return os.WriteFile(path, []byte(result), 0644)
@@ -798,6 +1104,214 @@ func cmdFiles(vaultDir string, params map[string]string, showTotal bool, format 
 	return nil
 }
 
+// sectionBounds holds the line range of a section identified by findSection.
+// HeadingLine is the 0-based index of the heading line itself.
+// ContentStart is the 0-based index of the first content line after the heading.
+// ContentEnd is the 0-based index one past the last content line (exclusive).
+// If the section has no content, ContentStart == ContentEnd.
+type sectionBounds struct {
+	HeadingLine  int
+	ContentStart int
+	ContentEnd   int
+}
+
+// headingLevel returns the Markdown heading level (number of leading # chars).
+// Returns 0 if the line is not a heading.
+func headingLevel(line string) int {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, "#") {
+		return 0
+	}
+	level := 0
+	for _, ch := range trimmed {
+		if ch == '#' {
+			level++
+		} else {
+			break
+		}
+	}
+	// Must be followed by a space or end of line to be a valid heading
+	if level >= len(trimmed) || trimmed[level] == ' ' {
+		return level
+	}
+	return 0
+}
+
+// findSection locates a heading in the given lines and returns its bounds.
+// The heading parameter should include the # prefix (e.g., "## Section A").
+// Heading match is case-insensitive and trims whitespace.
+// The section extends from the heading to the line before the next heading of
+// equal or higher level (or EOF). This operates on RAW content, not masked.
+func findSection(lines []string, heading string) (sectionBounds, bool) {
+	heading = strings.TrimSpace(heading)
+	targetLevel := headingLevel(heading)
+	if targetLevel == 0 {
+		return sectionBounds{}, false
+	}
+
+	headingTextLower := strings.ToLower(heading)
+
+	for i, line := range lines {
+		lineTrimmed := strings.TrimSpace(line)
+		if strings.ToLower(lineTrimmed) == headingTextLower {
+			// Found the heading. Now find the end of the section.
+			contentStart := i + 1
+			contentEnd := len(lines) // default: extends to EOF
+
+			for j := contentStart; j < len(lines); j++ {
+				lvl := headingLevel(lines[j])
+				if lvl > 0 && lvl <= targetLevel {
+					contentEnd = j
+					break
+				}
+			}
+
+			return sectionBounds{
+				HeadingLine:  i,
+				ContentStart: contentStart,
+				ContentEnd:   contentEnd,
+			}, true
+		}
+	}
+
+	return sectionBounds{}, false
+}
+
+// cmdPatch performs surgical edits to a note: heading-targeted or line-targeted
+// replace/delete. The delete parameter controls whether content is removed
+// (true) or replaced with new content (false).
+// When timestamps is true (or VLT_TIMESTAMPS=1), updated_at is refreshed.
+func cmdPatch(vaultDir string, params map[string]string, delete bool, timestamps bool) error {
+	title := params["file"]
+	if title == "" {
+		return fmt.Errorf("patch requires file=\"<title>\"")
+	}
+
+	path, err := resolveNote(vaultDir, title)
+	if err != nil {
+		return err
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	text := string(data)
+	lines := strings.Split(text, "\n")
+
+	heading := params["heading"]
+	lineSpec := params["line"]
+
+	if heading == "" && lineSpec == "" {
+		return fmt.Errorf("patch requires heading=\"<heading>\" or line=\"<N>\" (or line=\"<N-M>\")")
+	}
+
+	content := params["content"]
+
+	var result []string
+
+	if heading != "" {
+		// Heading-targeted patch
+		bounds, found := findSection(lines, heading)
+		if !found {
+			return fmt.Errorf("heading %q not found in %q", heading, title)
+		}
+
+		if delete {
+			// Delete mode: remove heading + content
+			result = append(result, lines[:bounds.HeadingLine]...)
+			result = append(result, lines[bounds.ContentEnd:]...)
+		} else {
+			// Replace mode: keep heading, replace content
+			result = append(result, lines[:bounds.ContentStart]...)
+			// Add new content (split into lines if multiline)
+			if content != "" {
+				contentLines := strings.Split(content, "\n")
+				result = append(result, contentLines...)
+			}
+			result = append(result, lines[bounds.ContentEnd:]...)
+		}
+	} else {
+		// Line-targeted patch
+		startLine, endLine, err := parseLineSpec(lineSpec)
+		if err != nil {
+			return err
+		}
+
+		// Validate range (1-based to 0-based)
+		if startLine < 1 || endLine < startLine {
+			return fmt.Errorf("invalid line specification: %s", lineSpec)
+		}
+		if startLine > len(lines) {
+			return fmt.Errorf("line %d is beyond file length (%d lines); out of range", startLine, len(lines))
+		}
+		if endLine > len(lines) {
+			return fmt.Errorf("line %d is beyond file length (%d lines); out of range", endLine, len(lines))
+		}
+
+		// Convert to 0-based
+		start := startLine - 1
+		end := endLine // exclusive (endLine is 1-based, so endLine = 0-based + 1)
+
+		if delete {
+			result = append(result, lines[:start]...)
+			result = append(result, lines[end:]...)
+		} else {
+			result = append(result, lines[:start]...)
+			result = append(result, content)
+			result = append(result, lines[end:]...)
+		}
+	}
+
+	output := strings.Join(result, "\n")
+
+	if timestampsEnabled(timestamps) {
+		output = ensureTimestamps(output, false, time.Now())
+	}
+
+	return os.WriteFile(path, []byte(output), 0644)
+}
+
+// parseLineSpec parses a line specification like "5" or "5-10" into start and end
+// line numbers (1-based, inclusive).
+func parseLineSpec(spec string) (start, end int, err error) {
+	if idx := strings.Index(spec, "-"); idx >= 0 {
+		startStr := spec[:idx]
+		endStr := spec[idx+1:]
+		start, err = parseInt(startStr)
+		if err != nil {
+			return 0, 0, fmt.Errorf("invalid line range start: %s", startStr)
+		}
+		end, err = parseInt(endStr)
+		if err != nil {
+			return 0, 0, fmt.Errorf("invalid line range end: %s", endStr)
+		}
+		return start, end, nil
+	}
+
+	start, err = parseInt(spec)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid line number: %s", spec)
+	}
+	return start, start, nil
+}
+
+// parseInt parses a string as a positive integer.
+func parseInt(s string) (int, error) {
+	n := 0
+	for _, ch := range s {
+		if ch < '0' || ch > '9' {
+			return 0, fmt.Errorf("not a number: %s", s)
+		}
+		n = n*10 + int(ch-'0')
+	}
+	if n == 0 {
+		return 0, fmt.Errorf("not a positive number: %s", s)
+	}
+	return n, nil
+}
+
 // readStdinIfPiped reads all of stdin if it's being piped (not a terminal).
 // Returns empty string if stdin is a terminal.
 func readStdinIfPiped() string {
@@ -810,4 +1324,56 @@ func readStdinIfPiped() string {
 		return ""
 	}
 	return string(data)
+}
+
+// cmdURI generates an obsidian:// URI for a note resolved by title.
+// The URI format is: obsidian://open?vault=VAULT&file=PATH[&heading=H][&block=B]
+// Vault name and file path are URL-encoded. The .md extension is stripped.
+// Path separators use forward slash (/).
+func cmdURI(vaultDir, vaultName string, params map[string]string) error {
+	title := params["file"]
+	if title == "" {
+		return fmt.Errorf("uri requires file=\"<title>\"")
+	}
+
+	path, err := resolveNote(vaultDir, title)
+	if err != nil {
+		return err
+	}
+
+	// Get relative path from vault root, strip .md extension
+	relPath, _ := filepath.Rel(vaultDir, path)
+	relPath = strings.TrimSuffix(relPath, ".md")
+
+	// Normalize path separators to forward slash (for Windows compatibility)
+	relPath = filepath.ToSlash(relPath)
+
+	// URL-encode vault name and file path
+	// We encode each path segment individually to preserve / as %2F in the
+	// final URI (Obsidian expects path-encoded values, not query-encoded).
+	encodedVault := encodeURIComponent(vaultName)
+	encodedFile := encodeURIComponent(relPath)
+
+	uri := fmt.Sprintf("obsidian://open?vault=%s&file=%s", encodedVault, encodedFile)
+
+	// Optional heading fragment
+	if heading := params["heading"]; heading != "" {
+		uri += "&heading=" + encodeURIComponent(heading)
+	}
+
+	// Optional block fragment
+	if block := params["block"]; block != "" {
+		uri += "&block=" + encodeURIComponent(block)
+	}
+
+	fmt.Println(uri)
+	return nil
+}
+
+// encodeURIComponent percent-encodes a string for use as a URI query parameter
+// value. Encodes spaces as %20, slashes as %2F, ampersands as %26, plus as %2B,
+// and other reserved characters. Uses url.QueryEscape (which encodes everything
+// aggressively) then replaces + with %20 since Obsidian expects %20 for spaces.
+func encodeURIComponent(s string) string {
+	return strings.ReplaceAll(url.QueryEscape(s), "+", "%20")
 }

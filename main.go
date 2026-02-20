@@ -13,15 +13,17 @@ import (
 	"strings"
 )
 
-const version = "0.4.0"
+const version = "0.5.0"
 
 var knownCommands = map[string]bool{
 	"read": true, "search": true, "create": true,
-	"append": true, "prepend": true, "move": true, "delete": true,
+	"append": true, "prepend": true, "write": true, "patch": true, "move": true, "delete": true,
 	"property:set": true, "property:remove": true, "properties": true,
 	"backlinks": true, "links": true, "orphans": true, "unresolved": true,
 	"tags": true, "tag": true, "files": true,
-	"tasks": true, "daily": true,
+	"tasks": true, "daily": true, "templates": true, "templates:apply": true,
+	"bookmarks": true, "bookmarks:add": true, "bookmarks:remove": true,
+	"uri": true,
 	"vaults": true, "help": true, "version": true,
 }
 
@@ -67,6 +69,8 @@ func main() {
 		die("%v", err)
 	}
 
+	ts := flags["timestamps"]
+
 	// Dispatch
 	switch cmd {
 	case "read":
@@ -74,11 +78,15 @@ func main() {
 	case "search":
 		err = cmdSearch(vaultDir, params, format)
 	case "create":
-		err = cmdCreate(vaultDir, params, flags["silent"])
+		err = cmdCreate(vaultDir, params, flags["silent"], ts)
 	case "append":
-		err = cmdAppend(vaultDir, params)
+		err = cmdAppend(vaultDir, params, ts)
 	case "prepend":
-		err = cmdPrepend(vaultDir, params)
+		err = cmdPrepend(vaultDir, params, ts)
+	case "write":
+		err = cmdWrite(vaultDir, params, ts)
+	case "patch":
+		err = cmdPatch(vaultDir, params, flags["delete"], ts)
 	case "move":
 		err = cmdMove(vaultDir, params)
 	case "delete":
@@ -107,6 +115,18 @@ func main() {
 		err = cmdTasks(vaultDir, params, flags)
 	case "daily":
 		err = cmdDaily(vaultDir, params)
+	case "templates":
+		err = cmdTemplates(vaultDir, params, format)
+	case "templates:apply":
+		err = cmdTemplatesApply(vaultDir, params)
+	case "bookmarks":
+		err = cmdBookmarks(vaultDir, format)
+	case "bookmarks:add":
+		err = cmdBookmarksAdd(vaultDir, params)
+	case "bookmarks:remove":
+		err = cmdBookmarksRemove(vaultDir, params)
+	case "uri":
+		err = cmdURI(vaultDir, vaultName, params)
 	default:
 		die("unknown command: %s", cmd)
 	}
@@ -153,10 +173,14 @@ Usage:
   vlt vault="<name>" <command> [args...]
 
 File commands:
-  read           file="<title>"                              Read a note by title (or alias)
-  create         name="<title>" path="<path>" [content=...] [silent]  Create a note
-  append         file="<title>" [content="<text>"]           Append to end of note
-  prepend        file="<title>" [content="<text>"]           Prepend after frontmatter
+  read           file="<title>" [heading="<heading>"]         Read a note (or a specific section)
+  create         name="<title>" path="<path>" [content=...] [silent] [timestamps]  Create a note
+  append         file="<title>" [content="<text>"] [timestamps]      Append to end of note
+  prepend        file="<title>" [content="<text>"] [timestamps]      Prepend after frontmatter
+  write          file="<title>" [content="<text>"] [timestamps]      Replace body (preserve frontmatter)
+  patch          file="<title>" heading="<heading>" [content="<text>"] [delete] [timestamps]  Section edit
+  patch          file="<title>" line="<N>" [content="<text>"] [delete] [timestamps]           Line edit
+  patch          file="<title>" line="<N-M>" [content="<text>"] [delete] [timestamps]         Line range edit
   move           path="<from>" to="<to>"                     Move/rename (updates wiki + md links)
   delete         file="<title>" [permanent]                  Trash (or permanently delete)
   files          [folder="<dir>"] [ext="<ext>"] [total]      List vault files
@@ -180,8 +204,22 @@ Tag commands:
 Task commands:
   tasks          [file="<title>"] [path="<dir>"] [done] [pending]  List tasks (checkboxes)
 
+Template commands:
+  templates                                                    List available templates
+  templates:apply template="<name>" name="<title>" path="<path>"  Create note from template
+
+Bookmark commands:
+  bookmarks                                                    List bookmarked file paths
+  bookmarks:add  file="<title>"                                Add a bookmark for a note
+  bookmarks:remove file="<title>"                              Remove a bookmark
+
+URI commands:
+  uri            file="<title>" [heading="<H>"] [block="<B>"]  Generate obsidian:// URI for a note
+
 Search:
-  search         query="<term> [key:value]"                  Search by title, content, properties
+  search         query="<term> [key:value]" [context="N"]    Search by title, content, properties
+  search         regex="<pattern>" [context="N"]              Search by regex (case-insensitive)
+                                                              context=N shows N lines before/after each match
 
 Other:
   vaults                                                     List discovered vaults
@@ -190,6 +228,8 @@ Options:
   vault="<name>"   Vault name (from Obsidian config), absolute path, or VLT_VAULT env var.
   silent           Suppress output on create.
   permanent        Hard delete instead of .trash.
+  delete           Remove heading+content or line(s) instead of replacing (patch).
+  timestamps       Auto-manage created_at/updated_at frontmatter (or set VLT_TIMESTAMPS=1).
   counts           Show note counts with tags.
   total            Show count instead of listing files.
   done             Show only completed tasks.
@@ -197,14 +237,19 @@ Options:
   --json           Output in JSON format.
   --yaml           Output in YAML format.
   --csv            Output in CSV format.
+  --tsv            Output in TSV (tab-separated values) format.
+  --tree           Output file lists as a hierarchical directory tree.
 
 Content from stdin:
-  If content= is omitted for create/append/prepend, content is read from stdin.
+  If content= is omitted for create/append/prepend/write, content is read from stdin.
 
 Search filters:
   Property filters can be embedded in search queries: query="term [key:value]"
   Multiple filters: query="architecture [status:active] [type:decision]"
   Filter-only: query="[status:active]"
+  Regex search: regex="arch\w+ure" (case-insensitive by default)
+  Regex + filters: regex="pattern" query="[status:active]"
+  If both query= and regex= provide text, regex takes precedence (with a warning).
 
 Wikilink support:
   [[Note]], [[Note#Heading]], [[Note#^block-id]], [[Note|Display]], ![[Embed]]
@@ -212,11 +257,18 @@ Wikilink support:
 
 Examples:
   vlt vault="Claude" read file="Session Operating Mode"
+  vlt vault="Claude" read file="Design Doc" heading="## Architecture"
   vlt vault="Claude" search query="architecture"
   vlt vault="Claude" search query="[status:active] [type:decision]"
   vlt vault="Claude" create name="My Note" path="_inbox/My Note.md" content="# Hello" silent
   echo "## Update" | vlt vault="Claude" append file="My Note"
   vlt vault="Claude" prepend file="My Note" content="New section at top"
+  vlt vault="Claude" write file="My Note" content="# Replacement body"
+  vlt vault="Claude" patch file="Note" heading="## Section" content="new content"
+  vlt vault="Claude" patch file="Note" heading="## Section" delete
+  vlt vault="Claude" patch file="Note" line="5" content="replacement line"
+  vlt vault="Claude" patch file="Note" line="5-10" content="replacement block"
+  vlt vault="Claude" patch file="Note" line="5" delete
   vlt vault="Claude" move path="_inbox/Old.md" to="decisions/New.md"
   vlt vault="Claude" delete file="Old Draft"
   vlt vault="Claude" delete file="Old Draft" permanent
@@ -238,6 +290,24 @@ Examples:
   vlt vault="Claude" daily date="2025-01-15"
   vlt vault="Claude" orphans --json
   vlt vault="Claude" search query="architecture" --csv
+  vlt vault="Claude" search query="architecture" context="2"
+  vlt vault="Claude" search query="architecture [status:active]" context="1" --json
+  vlt vault="Claude" search regex="arch\w+ure"
+  vlt vault="Claude" search regex="\d{4}-\d{2}-\d{2}" context="2"
+  vlt vault="Claude" search regex="pattern" query="[status:active]"
+  vlt vault="Claude" create name="Note" path="_inbox/Note.md" content="# Note" timestamps
+  vlt vault="Claude" append file="Note" content="more" timestamps
+  VLT_TIMESTAMPS=1 vlt vault="Claude" write file="Note" content="# New Body"
+  vlt vault="Claude" templates
+  vlt vault="Claude" templates --json
+  vlt vault="Claude" templates:apply template="Meeting Notes" name="Q1 Planning" path="meetings/Q1 Planning.md"
+  vlt vault="Claude" bookmarks
+  vlt vault="Claude" bookmarks --json
+  vlt vault="Claude" bookmarks:add file="Important Note"
+  vlt vault="Claude" bookmarks:remove file="Old Note"
+  vlt vault="Claude" uri file="Session Operating Mode"
+  vlt vault="Claude" uri file="Design Doc" heading="Architecture"
+  vlt vault="Claude" uri file="Note" block="block-id"
   vlt vaults
 `)
 }
