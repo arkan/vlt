@@ -1,4 +1,6 @@
-.PHONY: help build install test clean
+.PHONY: help build install install-skill test clean
+
+AGENT ?= claude
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -9,6 +11,18 @@ build: ## Build vlt binary
 
 install: ## Install vlt to $GOPATH/bin
 	go install .
+
+install-skill: ## Install vlt skill for an AI agent (AGENT=claude|codex|opencode)
+	@case "$(AGENT)" in \
+		claude)   dest="$(HOME)/.claude/skills/vlt-skill" ;; \
+		codex)    dest="$(HOME)/.codex/skills/vlt-skill" ;; \
+		opencode) dest="$(HOME)/.config/opencode/skills/vlt-skill" ;; \
+		*)        echo "Unknown agent: $(AGENT). Use claude, codex, or opencode." >&2; exit 1 ;; \
+	esac; \
+	mkdir -p "$$dest"; \
+	rm -rf "$$dest"; \
+	cp -r docs/vlt-skill "$$dest"; \
+	echo "Installed vlt skill to $$dest"
 
 test: ## Run tests
 	go test -v ./...

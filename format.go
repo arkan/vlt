@@ -113,44 +113,6 @@ func formatTable(rows []map[string]string, fields []string, format string) {
 	}
 }
 
-// formatMap outputs a map[string]string (single record) in the requested format.
-// keys controls output order.
-func formatMap(m map[string]string, keys []string, format string) {
-	switch format {
-	case "json":
-		data, _ := json.Marshal(m)
-		fmt.Println(string(data))
-	case "csv":
-		w := csv.NewWriter(os.Stdout)
-		w.Write(keys)
-		record := make([]string, len(keys))
-		for i, k := range keys {
-			record[i] = m[k]
-		}
-		w.Write(record)
-		w.Flush()
-	case "tsv":
-		fmt.Println(strings.Join(keys, "\t"))
-		record := make([]string, len(keys))
-		for i, k := range keys {
-			record[i] = m[k]
-		}
-		fmt.Println(strings.Join(record, "\t"))
-	case "yaml":
-		for _, k := range keys {
-			if v, ok := m[k]; ok {
-				fmt.Printf("%s: %s\n", k, yamlEscapeValue(v))
-			}
-		}
-	default:
-		for _, k := range keys {
-			if v, ok := m[k]; ok {
-				fmt.Printf("%s: %s\n", k, v)
-			}
-		}
-	}
-}
-
 // formatTagCounts outputs tag-count pairs in the requested format.
 func formatTagCounts(tags []string, counts map[string]int, format string) {
 	switch format {
