@@ -23,7 +23,7 @@ var knownCommands = map[string]bool{
 	"tags": true, "tag": true, "files": true,
 	"tasks": true, "daily": true, "templates": true, "templates:apply": true,
 	"bookmarks": true, "bookmarks:add": true, "bookmarks:remove": true,
-	"uri": true,
+	"uri":    true,
 	"vaults": true, "help": true, "version": true,
 }
 

@@ -616,10 +616,10 @@ func TestE2EContentManipulationDoesNotCorruptVault(t *testing.T) {
 
 	// Create 5 notes with various frontmatter
 	notes := map[string]string{
-		"docs/Alpha.md": "---\ntype: concept\nstatus: active\ntags: [go, testing]\n---\n\n# Alpha\n\n## Section One\n\nAlpha content one.\n\n## Section Two\n\nAlpha content two.\n",
-		"docs/Beta.md":  "---\ntype: decision\nstatus: draft\naliases: [B-Note]\n---\n\n# Beta\n\nBeta introduction.\n\n## Details\n\nBeta details here.\n",
-		"docs/Gamma.md": "---\ntype: pattern\nconfidence: high\n---\n\n# Gamma Pattern\n\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\n",
-		"docs/Delta.md": "---\ntype: debug\nstatus: resolved\n---\n\n# Delta Bug\n\n## Symptoms\n\nApp crashes on startup.\n\n## Root Cause\n\nNull pointer dereference.\n\n## Fix\n\nAdded nil check.\n",
+		"docs/Alpha.md":   "---\ntype: concept\nstatus: active\ntags: [go, testing]\n---\n\n# Alpha\n\n## Section One\n\nAlpha content one.\n\n## Section Two\n\nAlpha content two.\n",
+		"docs/Beta.md":    "---\ntype: decision\nstatus: draft\naliases: [B-Note]\n---\n\n# Beta\n\nBeta introduction.\n\n## Details\n\nBeta details here.\n",
+		"docs/Gamma.md":   "---\ntype: pattern\nconfidence: high\n---\n\n# Gamma Pattern\n\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\n",
+		"docs/Delta.md":   "---\ntype: debug\nstatus: resolved\n---\n\n# Delta Bug\n\n## Symptoms\n\nApp crashes on startup.\n\n## Root Cause\n\nNull pointer dereference.\n\n## Fix\n\nAdded nil check.\n",
 		"docs/Epsilon.md": "# Epsilon\n\nNo frontmatter note.\nJust plain content.\nWith multiple lines.\n",
 	}
 
