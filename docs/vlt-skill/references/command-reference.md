@@ -72,36 +72,58 @@ vlt vault="V" create name="Title" path="folder/Title.md" content="Body" silent t
 
 ### append
 
-Append content to the end of a note.
+Append content to the end of a note, at the end of a section, or after a specific line.
 
 ```bash
 vlt vault="V" append file="Note" content="New paragraph."
 echo "piped content" | vlt vault="V" append file="Note"
+vlt vault="V" append file="Note" heading="## Log" content="New entry"
+vlt vault="V" append file="Note" heading="## Log" section="start" content="Top entry"
+vlt vault="V" append file="Note" line="5" content="After line 5"
 ```
 
 **Parameters:**
 - `file=` (required) -- Note title or alias
 - `content=` (optional) -- Content to append; if omitted, reads from stdin
+- `heading=` (optional) -- Insert within this section (default: end of section)
+- `section=` (optional) -- `"start"` to insert at beginning of section instead of end
+- `line=` (optional) -- Insert after this line number (1-based)
 
 **Flags:**
 - `timestamps` -- Update `updated_at` property
+
+**Notes:**
+- Without `heading=` or `line=`, appends to end of file (original behavior)
+- With `heading=`, default position is end of section; use `section="start"` for beginning
+- With `line=`, content is inserted after the specified line
 
 ---
 
 ### prepend
 
-Insert content immediately after frontmatter (or at the beginning if no frontmatter).
+Insert content after frontmatter, at the start of a section, or before a specific line.
 
 ```bash
 vlt vault="V" prepend file="Note" content="Inserted at top of body."
+vlt vault="V" prepend file="Note" heading="## TODO" content="- [ ] Urgent task"
+vlt vault="V" prepend file="Note" heading="## TODO" section="end" content="Last item"
+vlt vault="V" prepend file="Note" line="10" content="Before line 10"
 ```
 
 **Parameters:**
 - `file=` (required) -- Note title or alias
 - `content=` (optional) -- Content to prepend; if omitted, reads from stdin
+- `heading=` (optional) -- Insert within this section (default: start of section)
+- `section=` (optional) -- `"end"` to insert at end of section instead of start
+- `line=` (optional) -- Insert before this line number (1-based)
 
 **Flags:**
 - `timestamps` -- Update `updated_at` property
+
+**Notes:**
+- Without `heading=` or `line=`, inserts after frontmatter or at top of file (original behavior)
+- With `heading=`, default position is start of section (after heading); use `section="end"` for end
+- With `line=`, content is inserted before the specified line
 
 ---
 

@@ -497,6 +497,53 @@ func cmdAppend(vaultDir string, params map[string]string, timestamps bool) error
 		return fmt.Errorf("no content provided (use content=\"...\" or pipe to stdin)")
 	}
 
+	heading := params["heading"]
+	lineSpec := params["line"]
+
+	// Positional append: heading or line
+	if heading != "" || lineSpec != "" {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		lines := strings.Split(string(data), "\n")
+		insertIdx := len(lines)
+
+		if heading != "" {
+			bounds, found := findSection(lines, heading)
+			if !found {
+				return fmt.Errorf("heading %q not found in %q", heading, title)
+			}
+			if params["section"] == "start" {
+				insertIdx = bounds.ContentStart
+			} else {
+				insertIdx = bounds.ContentEnd
+			}
+		} else {
+			lineNum, parseErr := parseInt(lineSpec)
+			if parseErr != nil {
+				return fmt.Errorf("invalid line number: %s", lineSpec)
+			}
+			// append after line N
+			insertIdx = lineNum
+			if insertIdx > len(lines) {
+				insertIdx = len(lines)
+			}
+		}
+
+		result := make([]string, 0, len(lines)+1)
+		result = append(result, lines[:insertIdx]...)
+		result = append(result, content)
+		result = append(result, lines[insertIdx:]...)
+
+		output := strings.Join(result, "\n")
+		if timestampsEnabled(timestamps) {
+			output = ensureTimestamps(output, false, time.Now())
+		}
+		return os.WriteFile(path, []byte(output), 0644)
+	}
+
+	// Default: append to end of file
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
@@ -772,6 +819,52 @@ func cmdPrepend(vaultDir string, params map[string]string, timestamps bool) erro
 	}
 
 	text := string(data)
+	heading := params["heading"]
+	lineSpec := params["line"]
+
+	// Positional prepend: heading or line
+	if heading != "" || lineSpec != "" {
+		lines := strings.Split(text, "\n")
+		insertIdx := 0
+
+		if heading != "" {
+			bounds, found := findSection(lines, heading)
+			if !found {
+				return fmt.Errorf("heading %q not found in %q", heading, title)
+			}
+			if params["section"] == "end" {
+				insertIdx = bounds.ContentEnd
+			} else {
+				insertIdx = bounds.ContentStart
+			}
+		} else {
+			lineNum, parseErr := parseInt(lineSpec)
+			if parseErr != nil {
+				return fmt.Errorf("invalid line number: %s", lineSpec)
+			}
+			// prepend before line N
+			insertIdx = lineNum - 1
+			if insertIdx < 0 {
+				insertIdx = 0
+			}
+			if insertIdx > len(lines) {
+				insertIdx = len(lines)
+			}
+		}
+
+		result := make([]string, 0, len(lines)+1)
+		result = append(result, lines[:insertIdx]...)
+		result = append(result, content)
+		result = append(result, lines[insertIdx:]...)
+
+		output := strings.Join(result, "\n")
+		if timestampsEnabled(timestamps) {
+			output = ensureTimestamps(output, false, time.Now())
+		}
+		return os.WriteFile(path, []byte(output), 0644)
+	}
+
+	// Default: prepend after frontmatter
 	_, bodyStart, hasFM := extractFrontmatter(text)
 
 	lines := strings.Split(text, "\n")

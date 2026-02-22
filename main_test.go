@@ -247,6 +247,68 @@ func TestCmdAppend(t *testing.T) {
 	}
 }
 
+func TestCmdAppend_WithHeading(t *testing.T) {
+	vaultDir := t.TempDir()
+	note := filepath.Join(vaultDir, "Note.md")
+	os.WriteFile(note, []byte("# Title\n\n## Log\n\nEntry 1\n\n## Other\n\nStuff\n"), 0644)
+
+	params := map[string]string{"file": "Note", "heading": "## Log", "content": "Entry 2"}
+	if err := cmdAppend(vaultDir, params, false); err != nil {
+		t.Fatalf("append heading: %v", err)
+	}
+
+	data, _ := os.ReadFile(note)
+	content := string(data)
+	// Entry 2 should be at the end of the Log section, before ## Other
+	logIdx := strings.Index(content, "Entry 2")
+	otherIdx := strings.Index(content, "## Other")
+	if logIdx < 0 || otherIdx < 0 || logIdx > otherIdx {
+		t.Errorf("content not inserted at end of section: %s", content)
+	}
+}
+
+func TestCmdAppend_WithHeadingSectionStart(t *testing.T) {
+	vaultDir := t.TempDir()
+	note := filepath.Join(vaultDir, "Note.md")
+	os.WriteFile(note, []byte("# Title\n\n## Log\n\nEntry 1\n\n## Other\n"), 0644)
+
+	params := map[string]string{"file": "Note", "heading": "## Log", "section": "start", "content": "Entry 0"}
+	if err := cmdAppend(vaultDir, params, false); err != nil {
+		t.Fatalf("append heading start: %v", err)
+	}
+
+	data, _ := os.ReadFile(note)
+	lines := strings.Split(string(data), "\n")
+	// Entry 0 should be right after "## Log"
+	for i, line := range lines {
+		if line == "## Log" && i+1 < len(lines) {
+			if lines[i+1] != "Entry 0" {
+				t.Errorf("expected Entry 0 right after heading, got %q", lines[i+1])
+			}
+			return
+		}
+	}
+	t.Error("heading ## Log not found")
+}
+
+func TestCmdAppend_AtLine(t *testing.T) {
+	vaultDir := t.TempDir()
+	note := filepath.Join(vaultDir, "Note.md")
+	os.WriteFile(note, []byte("Line 1\nLine 2\nLine 3\n"), 0644)
+
+	params := map[string]string{"file": "Note", "line": "2", "content": "Inserted"}
+	if err := cmdAppend(vaultDir, params, false); err != nil {
+		t.Fatalf("append at line: %v", err)
+	}
+
+	data, _ := os.ReadFile(note)
+	lines := strings.Split(string(data), "\n")
+	// "Inserted" should be after line 2 (index 2)
+	if len(lines) < 4 || lines[2] != "Inserted" {
+		t.Errorf("expected Inserted at index 2, got lines: %v", lines)
+	}
+}
+
 func TestCmdMove(t *testing.T) {
 	vaultDir := t.TempDir()
 
@@ -653,6 +715,67 @@ func TestCmdPrepend(t *testing.T) {
 	want = "TOP\n# Existing Content\n"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestCmdPrepend_WithHeading(t *testing.T) {
+	vaultDir := t.TempDir()
+	note := filepath.Join(vaultDir, "Note.md")
+	os.WriteFile(note, []byte("# Title\n\n## TODO\n\nExisting task\n\n## Done\n"), 0644)
+
+	params := map[string]string{"file": "Note", "heading": "## TODO", "content": "New task"}
+	if err := cmdPrepend(vaultDir, params, false); err != nil {
+		t.Fatalf("prepend heading: %v", err)
+	}
+
+	data, _ := os.ReadFile(note)
+	lines := strings.Split(string(data), "\n")
+	// "New task" should be right after "## TODO"
+	for i, line := range lines {
+		if line == "## TODO" && i+1 < len(lines) {
+			if lines[i+1] != "New task" {
+				t.Errorf("expected New task right after heading, got %q", lines[i+1])
+			}
+			return
+		}
+	}
+	t.Error("heading ## TODO not found")
+}
+
+func TestCmdPrepend_WithHeadingSectionEnd(t *testing.T) {
+	vaultDir := t.TempDir()
+	note := filepath.Join(vaultDir, "Note.md")
+	os.WriteFile(note, []byte("# Title\n\n## TODO\n\nExisting task\n\n## Done\n"), 0644)
+
+	params := map[string]string{"file": "Note", "heading": "## TODO", "section": "end", "content": "End task"}
+	if err := cmdPrepend(vaultDir, params, false); err != nil {
+		t.Fatalf("prepend heading end: %v", err)
+	}
+
+	data, _ := os.ReadFile(note)
+	content := string(data)
+	taskIdx := strings.Index(content, "End task")
+	doneIdx := strings.Index(content, "## Done")
+	if taskIdx < 0 || doneIdx < 0 || taskIdx > doneIdx {
+		t.Errorf("content not inserted at end of section: %s", content)
+	}
+}
+
+func TestCmdPrepend_AtLine(t *testing.T) {
+	vaultDir := t.TempDir()
+	note := filepath.Join(vaultDir, "Note.md")
+	os.WriteFile(note, []byte("Line 1\nLine 2\nLine 3\n"), 0644)
+
+	params := map[string]string{"file": "Note", "line": "2", "content": "Inserted"}
+	if err := cmdPrepend(vaultDir, params, false); err != nil {
+		t.Fatalf("prepend at line: %v", err)
+	}
+
+	data, _ := os.ReadFile(note)
+	lines := strings.Split(string(data), "\n")
+	// "Inserted" should be before line 2 (index 1)
+	if len(lines) < 4 || lines[1] != "Inserted" {
+		t.Errorf("expected Inserted at index 1, got lines: %v", lines)
 	}
 }
 

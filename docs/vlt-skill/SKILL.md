@@ -75,8 +75,8 @@ All listing commands support structured output:
 |---------|---------|----------------|
 | `read` | Print note content | `file=`, `heading=` (optional section) |
 | `create` | Create a new note | `name=`, `path=`, `content=`, `silent`, `timestamps` |
-| `append` | Add content to end | `file=`, `content=` (or stdin) |
-| `prepend` | Insert after frontmatter | `file=`, `content=` (or stdin) |
+| `append` | Add content (end, section, or after line) | `file=`, `content=`, `heading=`, `section=`, `line=` |
+| `prepend` | Insert content (after FM, section, or before line) | `file=`, `content=`, `heading=`, `section=`, `line=` |
 | `write` | Replace body, keep frontmatter | `file=`, `content=` (or stdin) |
 | `patch` | Edit by heading or line | `file=`, `heading=`/`line=`, `content=`/`delete` |
 | `delete` | Trash or hard-delete | `file=`, `permanent` (optional) |
@@ -218,6 +218,27 @@ vlt vault="V" patch file="Note" line="10-15" content="Replaced block."
 ### Delete a Section
 ```bash
 vlt vault="V" patch file="Note" heading="## Deprecated" delete
+```
+
+### Append/Prepend with Positioning
+```bash
+# Append at end of a section
+vlt vault="V" append file="Note" heading="## Log" content="New entry"
+
+# Append at start of a section
+vlt vault="V" append file="Note" heading="## Log" section="start" content="Top entry"
+
+# Append after a specific line
+vlt vault="V" append file="Note" line="5" content="After line 5"
+
+# Prepend at start of a section (after heading)
+vlt vault="V" prepend file="Note" heading="## TODO" content="- [ ] Urgent"
+
+# Prepend at end of a section
+vlt vault="V" prepend file="Note" heading="## TODO" section="end" content="Last item"
+
+# Prepend before a specific line
+vlt vault="V" prepend file="Note" line="10" content="Before line 10"
 ```
 
 ### Replace Entire Body (Keep Frontmatter)

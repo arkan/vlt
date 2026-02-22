@@ -187,8 +187,10 @@ Usage:
 File commands:
   read           file="<title>" [heading="<heading>"]         Read a note (or a specific section)
   create         name="<title>" path="<path>" [content=...] [silent] [timestamps]  Create a note
-  append         file="<title>" [content="<text>"] [timestamps]      Append to end of note
-  prepend        file="<title>" [content="<text>"] [timestamps]      Prepend after frontmatter
+  append         file="<title>" [content="<text>"] [heading="<H>"] [section="start"]
+                 [line="<N>"] [timestamps]                          Append (end of file, section, or after line)
+  prepend        file="<title>" [content="<text>"] [heading="<H>"] [section="end"]
+                 [line="<N>"] [timestamps]                          Prepend (after frontmatter, section, or before line)
   write          file="<title>" [content="<text>"] [timestamps]      Replace body (preserve frontmatter)
   patch          file="<title>" heading="<heading>" [content="<text>"] [delete] [timestamps]  Section edit
   patch          file="<title>" line="<N>" [content="<text>"] [delete] [timestamps]           Line edit
@@ -281,7 +283,11 @@ Examples:
   vlt vault="Claude" search query="[status:active] [type:decision]"
   vlt vault="Claude" create name="My Note" path="_inbox/My Note.md" content="# Hello" silent
   echo "## Update" | vlt vault="Claude" append file="My Note"
+  vlt vault="Claude" append file="Note" heading="## Log" content="New entry"
+  vlt vault="Claude" append file="Note" line="5" content="After line 5"
   vlt vault="Claude" prepend file="My Note" content="New section at top"
+  vlt vault="Claude" prepend file="Note" heading="## TODO" content="- [ ] Urgent task"
+  vlt vault="Claude" prepend file="Note" line="10" content="Before line 10"
   vlt vault="Claude" write file="My Note" content="# Replacement body"
   vlt vault="Claude" patch file="Note" heading="## Section" content="new content"
   vlt vault="Claude" patch file="Note" heading="## Section" delete
