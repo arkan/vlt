@@ -21,7 +21,9 @@ var knownCommands = map[string]bool{
 	"property:set": true, "property:remove": true, "properties": true,
 	"backlinks": true, "links": true, "orphans": true, "unresolved": true,
 	"tags": true, "tag": true, "files": true,
-	"tasks": true, "daily": true, "templates": true, "templates:apply": true,
+	"tasks": true, "tasks:add": true, "tasks:edit": true, "tasks:remove": true,
+	"tasks:done": true, "tasks:toggle": true,
+	"daily": true, "templates": true, "templates:apply": true,
 	"bookmarks": true, "bookmarks:add": true, "bookmarks:remove": true,
 	"uri":    true,
 	"vaults": true, "help": true, "version": true,
@@ -113,6 +115,16 @@ func main() {
 		err = cmdFiles(vaultDir, params, flags["total"], format)
 	case "tasks":
 		err = cmdTasks(vaultDir, params, flags)
+	case "tasks:add":
+		err = cmdTasksAdd(vaultDir, params, flags)
+	case "tasks:edit":
+		err = cmdTasksEdit(vaultDir, params, flags)
+	case "tasks:remove":
+		err = cmdTasksRemove(vaultDir, params)
+	case "tasks:done":
+		err = cmdTasksDone(vaultDir, params)
+	case "tasks:toggle":
+		err = cmdTasksToggle(vaultDir, params)
 	case "daily":
 		err = cmdDaily(vaultDir, params)
 	case "templates":
@@ -203,6 +215,13 @@ Tag commands:
 
 Task commands:
   tasks          [file="<title>"] [path="<dir>"] [done] [pending]  List tasks (checkboxes)
+  tasks:add      file="<title>" content="<text>" [heading="<H>"] [section="start|end"] [line="<N>"]
+                 [due="<date>"] [priority="<level>"] [scheduled="<date>"] [--emoji]  Add a task
+  tasks:edit     file="<title>" {id=|line=|match=} [content="<text>"] [due=...] [priority=...]
+                 [status="done|pending"] [--emoji] [--dataview]  Edit a task
+  tasks:remove   file="<title>" {id=|line=|match=}              Remove a task line
+  tasks:done     file="<title>" {id=|line=|match=}              Mark task as done
+  tasks:toggle   file="<title>" {id=|line=|match=}              Toggle done/pending
 
 Template commands:
   templates                                                    List available templates
@@ -286,6 +305,15 @@ Examples:
   vlt vault="Claude" tasks
   vlt vault="Claude" tasks file="Project Plan" pending
   vlt vault="Claude" tasks path="projects" --json
+  vlt vault="Claude" tasks:add file="Note" content="Buy groceries" due="2024-01-15" priority="high"
+  vlt vault="Claude" tasks:add file="Note" content="Review PR" heading="## TODO" section="end"
+  vlt vault="Claude" tasks:add file="Note" content="Ship feature" due="2024-06-01" --emoji
+  vlt vault="Claude" tasks:edit file="Note" line="5" content="Updated text"
+  vlt vault="Claude" tasks:edit file="Note" id="abc" due="2024-02-01"
+  vlt vault="Claude" tasks:edit file="Note" match="groceries" priority="-"
+  vlt vault="Claude" tasks:remove file="Note" line="5"
+  vlt vault="Claude" tasks:done file="Note" match="groceries"
+  vlt vault="Claude" tasks:toggle file="Note" id="abc"
   vlt vault="Claude" daily
   vlt vault="Claude" daily date="2025-01-15"
   vlt vault="Claude" orphans --json
