@@ -272,6 +272,11 @@ Search filters:
   Regex + filters: regex="pattern" query="[status:active]"
   If both query= and regex= provide text, regex takes precedence (with a warning).
 
+Note resolution (file= parameter):
+  file="Note"              Resolve by filename (without .md) or alias
+  file="/Projects/Sclaw"   Exact path from vault root (leading /)
+  file="sub/Note"          Suffix match: finds any note whose path ends with sub/Note.md
+
 Wikilink support:
   [[Note]], [[Note#Heading]], [[Note#^block-id]], [[Note|Display]], ![[Embed]]
   Block references (^block-id) are fully supported in parsing, rename, and backlinks.

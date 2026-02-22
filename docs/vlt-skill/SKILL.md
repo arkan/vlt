@@ -47,11 +47,14 @@ Run `vlt vaults` to list all discovered vaults.
 
 ### Note Resolution
 
-vlt resolves note titles using a two-pass algorithm:
-1. **Fast pass** -- exact filename match (`<title>.md`), no file I/O
-2. **Alias pass** -- checks frontmatter `aliases` field (case-insensitive)
+vlt resolves `file=` using a multi-pass algorithm:
+1. **Path pass** -- if `file=` contains `/`, resolves as a vault path:
+   - Leading `/` → exact path from vault root (e.g., `file="/Projects/Sclaw"`)
+   - No leading `/` → suffix match (e.g., `file="sub/Note"` matches `deep/sub/Note.md`)
+2. **Filename pass** -- exact filename match (`<title>.md`), no file I/O
+3. **Alias pass** -- checks frontmatter `aliases` field (case-insensitive)
 
-Reference notes by filename (without `.md`) or by any alias.
+Reference notes by filename (without `.md`), by path, or by any alias.
 
 ### Parameter Syntax
 

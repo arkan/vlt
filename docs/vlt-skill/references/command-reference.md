@@ -34,13 +34,13 @@ vlt vault="V" read file="Note Title" heading="## Section Name"
 ```
 
 **Parameters:**
-- `file=` (required) -- Note title or alias
+- `file=` (required) -- Note title, alias, or path (see Note Resolution below)
 - `heading=` (optional) -- Heading to scope output to (include `#` prefix)
 
 **Behavior:**
 - Outputs the full note content to stdout
 - When `heading=` is specified, outputs only that section (heading through next same-or-higher-level heading)
-- Resolves notes by filename first, then by alias
+- Resolves notes by path (if `/` present), then filename, then alias
 - Exit 1 if note not found
 
 ---
@@ -83,7 +83,7 @@ vlt vault="V" append file="Note" line="5" content="After line 5"
 ```
 
 **Parameters:**
-- `file=` (required) -- Note title or alias
+- `file=` (required) -- Note title, alias, or path
 - `content=` (optional) -- Content to append; if omitted, reads from stdin
 - `heading=` (optional) -- Insert within this section (default: end of section)
 - `section=` (optional) -- `"start"` to insert at beginning of section instead of end
@@ -111,7 +111,7 @@ vlt vault="V" prepend file="Note" line="10" content="Before line 10"
 ```
 
 **Parameters:**
-- `file=` (required) -- Note title or alias
+- `file=` (required) -- Note title, alias, or path
 - `content=` (optional) -- Content to prepend; if omitted, reads from stdin
 - `heading=` (optional) -- Insert within this section (default: start of section)
 - `section=` (optional) -- `"end"` to insert at end of section instead of start
@@ -136,7 +136,7 @@ vlt vault="V" write file="Note" content="Completely new body."
 ```
 
 **Parameters:**
-- `file=` (required) -- Note title or alias
+- `file=` (required) -- Note title, alias, or path
 - `content=` (optional) -- New body; if omitted, reads from stdin
 
 **Flags:**
@@ -170,7 +170,7 @@ vlt vault="V" patch file="Note" line="10-15" delete
 ```
 
 **Parameters:**
-- `file=` (required) -- Note title or alias
+- `file=` (required) -- Note title, alias, or path
 - `heading=` (mutually exclusive with `line=`) -- Target heading (include `#` prefix)
 - `line=` (mutually exclusive with `heading=`) -- Line number or range (`N` or `N-M`)
 - `content=` (optional) -- Replacement content; if omitted, reads from stdin
@@ -196,7 +196,7 @@ vlt vault="V" delete file="Note" permanent
 ```
 
 **Parameters:**
-- `file=` (required) -- Note title or alias
+- `file=` (required) -- Note title, alias, or path
 
 **Flags:**
 - `permanent` -- Hard-delete instead of moving to `.trash/`
@@ -281,7 +281,7 @@ vlt vault="V" property:set file="Note" name="tags" value="[go, cli]"
 ```
 
 **Parameters:**
-- `file=` (required) -- Note title or alias
+- `file=` (required) -- Note title, alias, or path
 - `name=` (required) -- Property key
 - `value=` (required) -- Property value (strings, numbers, arrays in YAML syntax)
 
