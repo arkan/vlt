@@ -191,6 +191,64 @@ func TestResolveNote_Alias(t *testing.T) {
 	}
 }
 
+func TestResolveNote_AbsPath(t *testing.T) {
+	vaultDir := t.TempDir()
+	os.MkdirAll(filepath.Join(vaultDir, "Projects"), 0755)
+	os.WriteFile(filepath.Join(vaultDir, "Projects", "Sclaw.md"), []byte("# Sclaw"), 0644)
+
+	// Absolute vault path with leading /
+	path, err := resolveNote(vaultDir, "/Projects/Sclaw")
+	if err != nil {
+		t.Fatalf("absolute path resolution failed: %v", err)
+	}
+	rel, _ := filepath.Rel(vaultDir, path)
+	if rel != "Projects/Sclaw.md" {
+		t.Errorf("got %q, want Projects/Sclaw.md", rel)
+	}
+
+	// Absolute path not found
+	_, err = resolveNote(vaultDir, "/Nonexistent/Note")
+	if err == nil {
+		t.Error("expected error for nonexistent absolute path")
+	}
+}
+
+func TestResolveNote_SuffixPath(t *testing.T) {
+	vaultDir := t.TempDir()
+	os.MkdirAll(filepath.Join(vaultDir, "Projects", "area", "sub"), 0755)
+	os.WriteFile(filepath.Join(vaultDir, "Projects", "area", "sub", "Deep.md"), []byte("# Deep"), 0644)
+
+	// Suffix match: "area/sub/Deep" matches Projects/area/sub/Deep.md
+	path, err := resolveNote(vaultDir, "area/sub/Deep")
+	if err != nil {
+		t.Fatalf("suffix path resolution failed: %v", err)
+	}
+	rel, _ := filepath.Rel(vaultDir, path)
+	if rel != "Projects/area/sub/Deep.md" {
+		t.Errorf("got %q, want Projects/area/sub/Deep.md", rel)
+	}
+
+	// Exact relative path also works
+	path, err = resolveNote(vaultDir, "Projects/area/sub/Deep")
+	if err != nil {
+		t.Fatalf("exact relative path resolution failed: %v", err)
+	}
+	rel, _ = filepath.Rel(vaultDir, path)
+	if rel != "Projects/area/sub/Deep.md" {
+		t.Errorf("got %q, want Projects/area/sub/Deep.md", rel)
+	}
+
+	// With .md extension
+	path, err = resolveNote(vaultDir, "area/sub/Deep.md")
+	if err != nil {
+		t.Fatalf("suffix path with .md failed: %v", err)
+	}
+	rel, _ = filepath.Rel(vaultDir, path)
+	if rel != "Projects/area/sub/Deep.md" {
+		t.Errorf("got %q, want Projects/area/sub/Deep.md", rel)
+	}
+}
+
 func TestCmdCreateAndRead(t *testing.T) {
 	vaultDir := t.TempDir()
 

@@ -109,6 +109,46 @@ func resolveNote(vaultDir, title string) (string, error) {
 	target := title + ".md"
 	var found string
 
+	// Pass 0: path-based resolution when title contains "/"
+	if strings.Contains(title, "/") {
+		suffix := title
+		if strings.HasPrefix(suffix, "/") {
+			suffix = suffix[1:]
+		}
+		if !strings.HasSuffix(suffix, ".md") {
+			suffix += ".md"
+		}
+
+		if strings.HasPrefix(title, "/") {
+			// Absolute vault path — direct Stat
+			candidate := filepath.Join(vaultDir, suffix)
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate, nil
+			}
+		} else {
+			// Relative suffix — walk and match any path ending with suffix
+			suffixSlash := string(filepath.Separator) + suffix
+			filepath.WalkDir(vaultDir, func(path string, d os.DirEntry, err error) error {
+				if err != nil {
+					return nil
+				}
+				name := d.Name()
+				if d.IsDir() && (strings.HasPrefix(name, ".") || name == ".trash") {
+					return filepath.SkipDir
+				}
+				rel, _ := filepath.Rel(vaultDir, path)
+				if !d.IsDir() && (rel == suffix || strings.HasSuffix(path, suffixSlash)) {
+					found = path
+					return filepath.SkipAll
+				}
+				return nil
+			})
+			if found != "" {
+				return found, nil
+			}
+		}
+	}
+
 	// First pass: exact filename match (fast, no file reads)
 	filepath.WalkDir(vaultDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
