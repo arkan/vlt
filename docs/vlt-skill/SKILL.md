@@ -109,6 +109,11 @@ All listing commands support structured output:
 | `tags` | List all tags | `counts`, `sort="count"` |
 | `tag` | Notes with a tag (hierarchical) | `tag=` |
 | `tasks` | List checkboxes | `file=`/`path=`, `done`/`pending` |
+| `tasks:add` | Add a task to a note | `file=`, `content=`, `heading=`, `section=`, `line=`, `due=`, `priority=`, `--emoji` |
+| `tasks:edit` | Edit task text/metadata/status | `file=`, `{id=\|line=\|match=}`, `content=`, `due=`, `priority=`, `status=` |
+| `tasks:remove` | Remove a task line | `file=`, `{id=\|line=\|match=}` |
+| `tasks:done` | Mark task as completed | `file=`, `{id=\|line=\|match=}` |
+| `tasks:toggle` | Toggle done/pending | `file=`, `{id=\|line=\|match=}` |
 
 ### Templates, Bookmarks, URI
 
@@ -218,6 +223,78 @@ vlt vault="V" patch file="Note" heading="## Deprecated" delete
 ### Replace Entire Body (Keep Frontmatter)
 ```bash
 vlt vault="V" write file="Note" content="New body content."
+```
+
+## Task Management
+
+vlt supports full CRUD on Obsidian Tasks checkboxes with metadata in both **Dataview** (`[key:: value]`) and **Emoji** (📅, ⏫) formats.
+
+### Task Metadata Fields
+
+| Field | Dataview | Emoji | CLI param |
+|-------|----------|-------|-----------|
+| Due | `[due:: DATE]` | 📅 | `due=` |
+| Scheduled | `[scheduled:: DATE]` | ⏳ | `scheduled=` |
+| Start | `[start:: DATE]` | 🛫 | `start=` |
+| Created | `[created:: DATE]` | ➕ | `created=` (auto-filled) |
+| Completion | `[completion:: DATE]` | ✅ | `completion=` |
+| Priority | `[priority:: LEVEL]` | ⏬🔽🔼⏫🔺 | `priority=` |
+| Recurrence | `[repeat:: RULE]` | 🔁 | `repeat=` |
+| ID | `[id:: ID]` | 🆔 | `id=` |
+| Depends On | `[dependsOn:: IDS]` | ⛔ | `dependsOn=` |
+
+Priority levels: `lowest`, `low`, `medium`, `high`, `highest`.
+
+### Task Resolution
+
+Tasks are identified by (in priority order):
+1. **ID**: `id="abc123"` -- finds `[id:: abc123]` or 🆔 abc123
+2. **Line number**: `line="5"` -- task at line 5
+3. **Text match**: `match="groceries"` -- first task containing text (case-insensitive)
+
+### Add a Task
+
+```bash
+# Add at end of file (Dataview format, auto-fills created date)
+vlt vault="V" tasks:add file="Note" content="Buy groceries" due="2024-01-15" priority="high"
+
+# Add after a heading (at section start or end)
+vlt vault="V" tasks:add file="Note" content="Review PR" heading="## TODO" section="end"
+
+# Add at a specific line
+vlt vault="V" tasks:add file="Note" content="Call dentist" line="10"
+
+# Add in emoji format
+vlt vault="V" tasks:add file="Note" content="Ship feature" due="2024-06-01" --emoji
+```
+
+### Edit a Task
+
+```bash
+# Change text
+vlt vault="V" tasks:edit file="Note" line="5" content="Updated text"
+
+# Change metadata by ID
+vlt vault="V" tasks:edit file="Note" id="abc" due="2024-02-01"
+
+# Clear a field with "-"
+vlt vault="V" tasks:edit file="Note" match="groceries" due="-"
+
+# Change status
+vlt vault="V" tasks:edit file="Note" line="5" status="done"
+```
+
+### Remove, Done, Toggle
+
+```bash
+# Remove a task line entirely
+vlt vault="V" tasks:remove file="Note" line="5"
+
+# Mark as done (sets [x] + completion date)
+vlt vault="V" tasks:done file="Note" match="groceries"
+
+# Toggle done/pending
+vlt vault="V" tasks:toggle file="Note" id="abc"
 ```
 
 ## Stdin Support

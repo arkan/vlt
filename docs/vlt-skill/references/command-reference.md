@@ -406,6 +406,103 @@ vlt vault="V" tasks done                   # Checked only
 - `done` -- Only completed tasks (`- [x]` or `- [X]`)
 - `pending` -- Only incomplete tasks (`- [ ]`)
 
+### tasks:add
+
+Add a new task to a note with optional metadata (Dataview or Emoji format).
+
+```bash
+vlt vault="V" tasks:add file="Note" content="Buy groceries" due="2024-01-15" priority="high"
+vlt vault="V" tasks:add file="Note" content="Review PR" heading="## TODO" section="end"
+vlt vault="V" tasks:add file="Note" content="Task" line="10"
+vlt vault="V" tasks:add file="Note" content="Ship it" due="2024-06-01" --emoji
+```
+
+**Parameters:**
+- `file=` -- Target note (required)
+- `content=` -- Task text (required, or stdin)
+- `heading=` -- Insert near this heading
+- `section=` -- `"start"` or `"end"` of heading section (default: `"end"`)
+- `line=` -- Insert at this line number
+- `due=`, `scheduled=`, `start=`, `created=`, `priority=`, `repeat=`, `id=`, `dependsOn=`, `onCompletion=` -- Metadata fields
+
+**Flags:**
+- `--emoji` -- Write in emoji format instead of Dataview
+
+**Notes:**
+- `created` is auto-filled with today's date if not provided
+- Default format is Dataview (`[key:: value]`)
+- Default position is end of file
+
+### tasks:edit
+
+Modify an existing task's text, metadata, or status.
+
+```bash
+vlt vault="V" tasks:edit file="Note" line="5" content="Updated text"
+vlt vault="V" tasks:edit file="Note" id="abc" due="2024-02-01"
+vlt vault="V" tasks:edit file="Note" match="groceries" priority="-"
+vlt vault="V" tasks:edit file="Note" line="3" status="done"
+```
+
+**Parameters:**
+- `file=` -- Target note (required)
+- `id=`, `line=`, or `match=` -- Task identifier (at least one required, resolved in that priority order)
+- `content=` -- New task text
+- `status=` -- `"done"` or `"pending"`
+- Any metadata field -- Updates that field; value `"-"` clears it
+
+**Flags:**
+- `--emoji` -- Force emoji format output
+- `--dataview` -- Force Dataview format output
+
+### tasks:remove
+
+Remove a task line entirely from a note.
+
+```bash
+vlt vault="V" tasks:remove file="Note" line="5"
+vlt vault="V" tasks:remove file="Note" id="abc"
+vlt vault="V" tasks:remove file="Note" match="groceries"
+```
+
+**Parameters:**
+- `file=` -- Target note (required)
+- `id=`, `line=`, or `match=` -- Task identifier (required)
+
+### tasks:done
+
+Mark a task as completed. Sets `[x]` and adds the completion date.
+
+```bash
+vlt vault="V" tasks:done file="Note" line="5"
+vlt vault="V" tasks:done file="Note" match="groceries"
+```
+
+**Parameters:**
+- `file=` -- Target note (required)
+- `id=`, `line=`, or `match=` -- Task identifier (required)
+
+**Notes:**
+- If the task is already done, prints a message and makes no changes
+- Completion date is set to today in the task's original format
+
+### tasks:toggle
+
+Toggle a task between done and pending.
+
+```bash
+vlt vault="V" tasks:toggle file="Note" line="5"
+vlt vault="V" tasks:toggle file="Note" id="abc"
+```
+
+**Parameters:**
+- `file=` -- Target note (required)
+- `id=`, `line=`, or `match=` -- Task identifier (required)
+
+**Notes:**
+- Toggling to done sets the completion date to today
+- Toggling to pending clears the completion date
+
 ---
 
 ## Template Operations
