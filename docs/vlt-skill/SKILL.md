@@ -75,7 +75,7 @@ All listing commands support structured output:
 |---------|---------|----------------|
 | `read` | Print note content | `file=`, `heading=` (optional section) |
 | `create` | Create a new note | `name=`, `path=`, `content=`, `silent`, `timestamps` |
-| `append` | Add content (end, section, or after line) | `file=`, `content=`, `heading=`, `section=`, `line=` |
+| `append` | Add content (end, section, or after line). **NOT for tasks -- use `tasks:add`** | `file=`, `content=`, `heading=`, `section=`, `line=` |
 | `prepend` | Insert content (after FM, section, or before line) | `file=`, `content=`, `heading=`, `section=`, `line=` |
 | `write` | Replace body, keep frontmatter | `file=`, `content=` (or stdin) |
 | `patch` | Edit by heading or line | `file=`, `heading=`/`line=`, `content=`/`delete` |
@@ -247,6 +247,8 @@ vlt vault="V" write file="Note" content="New body content."
 ```
 
 ## Task Management
+
+> **IMPORTANT**: ALWAYS use `tasks:add`, `tasks:edit`, `tasks:done`, `tasks:remove`, or `tasks:toggle` for task operations. NEVER use `append` or `prepend` to add tasks -- they skip metadata (id, created date) and bypass task formatting.
 
 vlt supports full CRUD on Obsidian Tasks checkboxes with metadata in both **Dataview** (`[key:: value]`) and **Emoji** (📅, ⏫) formats.
 
